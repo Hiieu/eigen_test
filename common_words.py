@@ -3,10 +3,15 @@ import re
 import shutil
 from argparse import ArgumentParser
 
-import nltk
 import pandas as pd
-
 from collections import defaultdict
+from nltk import (
+    download as nltk_download,
+    sent_tokenize,
+    word_tokenize
+)
+from nltk.data import path as nltk_path
+from nltk.corpus import stopwords
 
 BASE_DIR = os.path.dirname(__file__)
 
@@ -21,11 +26,13 @@ COMPRESSION = 'gzip'
 
 class FindCommonWords:
 
-    def __init__(self, result_path, processed_files_path, occurrences_limit):
+    def __init__(self, result_path, processed_files_path, occurrences_limit,
+                 include_stopwords):
 
         self.result_path = result_path
         self.occurrences_limit = occurrences_limit
         self.processed_files_path = processed_files_path
+        self.include_stopwords = include_stopwords
 
     def find_common_words(self, path):
 
@@ -46,23 +53,22 @@ class FindCommonWords:
 
     def _get_common_words(self):
 
-        result_dataframe = pd.DataFrame(columns=['word', 'docs', 'sentences'])
+        result_dataframe = pd.DataFrame(columns=['word', 'docs', 'sentences', 'total'])
 
         for dir_entry in os.scandir(self.processed_files_path):
             doc_dataframe = pd.read_csv(dir_entry.path, compression=COMPRESSION)
 
             merged_df = pd.merge(result_dataframe, doc_dataframe, on=['word'],
                                  how='outer', suffixes=('_result', '_doc'))
+            merged_df['docs'] = dir_entry.name
 
             # Merge non empty values from doc's sentence column and result column
             # Split new sentences with a new line for readability
             merged_df.loc[(merged_df['sentences_result'].notnull())
-                          & (merged_df['sentences_doc'].notnull()), 'sentences_result'] += '\----\\'
+                          & (merged_df['sentences_doc'].notnull()), 'sentences_result'] += '\n'
 
             # Merge doc's sentence to result column if result column is
             merged_df['sentences_result'] = merged_df['sentences_result'].fillna(merged_df['sentences_doc'])
-
-
 
     def _get_dataframe(self, file_object):
 
@@ -73,8 +79,7 @@ class FindCommonWords:
         for word, details in words_details:
             total = details[0]
             sentences = details[1]
-            dataframe.loc[len(dataframe.index) + 1] = word, total, list(sentences)
-
+            dataframe.loc[len(dataframe.index) + 1] = word, total, '\n'.join(sentences)
 
         dataframe = dataframe.loc[dataframe['total'] >= self.occurrences_limit]
         dataframe = dataframe.sort_values(by=['total'], ascending=False)
@@ -88,7 +93,7 @@ class FindCommonWords:
         for line in file_object:
 
             line = line.decode('utf-8')
-            sentences = nltk.sent_tokenize(line)
+            sentences = sent_tokenize(line)
 
             for sentence in sentences:
                 words = self._get_words(sentence)
@@ -98,18 +103,21 @@ class FindCommonWords:
 
         return words_details.items()
 
-    @staticmethod
-    def _get_words(sentence):
+    def _get_words(self, sentence):
         """Get and format words from a sentence
         @:param sentence: str: a sentence from a line
-        @return list(str): list of words"""
+        @return list(str): list of words (with/without stop words)"""
 
         sentence = sentence.lower()
 
         # Remove punctuations
         sentence = re.sub('[^\w\s]', '', sentence)
-        words = nltk.word_tokenize(sentence, preserve_line=True)
-        return words
+        words = word_tokenize(sentence, preserve_line=True)
+
+        if self.include_stopwords:
+            return words
+
+        return set(words).difference(stopwords)
 
 
 def _setup_directories(processed_path, nlkt_data_path):
@@ -124,9 +132,9 @@ def _setup_directories(processed_path, nlkt_data_path):
 
     if not os.path.exists(nlkt_data_path):
         os.makedirs(nlkt_data_path)
-        nltk.download('punkt', download_dir=nlkt_data_path)
+        nltk_download('punkt', download_dir=nlkt_data_path)
 
-    nltk.data.path.append(nlkt_data_path)
+    nltk_path.append(nlkt_data_path)
 
 
 def handle_parser(args):
@@ -135,7 +143,11 @@ def handle_parser(args):
     processed_file_path = args.processed_file_path
     _setup_directories(processed_file_path, args.nlkt_data_path)
 
-    FindCommonWords(args.output, processed_file_path, args.occurrences_limit).find_common_words(args.docs_path)
+    FindCommonWords(args.output,
+                    processed_file_path,
+                    args.occurrences_limit,
+                    args.include_stopwords
+                    ).find_common_words(args.docs_path)
 
 
 def create_parser():
@@ -147,6 +159,7 @@ def create_parser():
     parser.add_argument('-output', help='File output directory. Default: result/', default=OUTPUT_PATH)
     parser.add_argument('-occurrences_limit', help=f'Occurrences limit. Default: {OCCURRENCES_LIMIT}', default=OCCURRENCES_LIMIT)
     parser.add_argument('-nlkt_data_path', help=f'Nlkt path for nlkt module. Default: {NLKT_DATA_PATH}', default=NLKT_DATA_PATH)
+    parser.add_argument('-include_stopwords', help=f'Include stop words?. Default: False', required=False)
     handle_parser(parser.parse_args())
 
 
