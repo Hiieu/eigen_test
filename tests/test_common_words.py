@@ -1,4 +1,3 @@
-import os
 import shutil
 
 from argparse import Namespace
@@ -20,7 +19,6 @@ from common_words import (
 
 from .sample import (
     DOC_1,
-    DOC_2,
     PROCESSED_DOC_1,
     PROCESSED_DOC_2
 )

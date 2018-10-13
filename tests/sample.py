@@ -10,4 +10,3 @@ turtle,5,turtle turtle turtle turtle turtle"""
 
 DOC_1 = """I saw a black cat.\nThe cat doesnt like me.\nI saw a cat"""
 
-DOC_2 = """Random text. It's so random, that I cannot believe."""

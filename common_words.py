@@ -71,6 +71,68 @@ class FindCommonWords:
         output_path = f'{self.output_path}/{RESULT_CSV_FILENAME}'
         result_dataframe.to_csv(output_path, index=False)
 
+    def _get_words_details(self, file_object):
+
+        # create a defaultdict with number of occurrences
+        # and set of sentences (if a word appears more than once in one sentence)
+        words_details = defaultdict(lambda: [0, set()])
+
+        for line in file_object:
+
+            line = line.decode('utf-8')
+            sentences = (sentence for sentence in sent_tokenize(line))
+            for sentence in sentences:
+                # Lower all words first to count the words easier
+                sentence = sentence.lower()
+
+                words = self._get_words(sentence)
+                for word in words:
+                    # total words in one sentence
+                    total = len(re.findall(r'\b{0}\b'.format(word), sentence))
+
+                    words_details[word][0] += total
+
+                    # We use set() so we won't have duplicates
+                    # if more than one word exist in the sentence
+                    words_details[word][1].add(sentence)
+
+        return words_details
+
+    def _get_words(self, sentence):
+        """Get and format words from a sentence
+        @:param sentence: str: a sentence from a line
+        @return generator: list of words (with/without stop words)"""
+
+        # Remove apostrophes in contractions words with
+        # Syntactically they are one word so I will treat them like that
+        # The other option would be changing explicitly contractions words to two seperate words
+        sentence = re.sub("""(?<=\w)['’`"](?=\w)""", '', sentence)
+
+        # Instead create a new wheel, we can use a nltk library for tokenization
+        toktok = ToktokTokenizer()
+        words = toktok.tokenize(sentence)
+
+        # Here we can include or exclude stop words, they are probably the most common words
+        if not self.include_stopwords:
+            # This throws ResourceWarning. It opened the stream but devs forgot to include close()
+            stop_words = stopwords.words('english')
+            words = set(words).difference(stop_words)
+
+        # Ignore punctuations and return generator with words
+        return (word for word in words if not re.match('[^\w]', word))
+
+    @staticmethod
+    def _prepare_doc_dataframe_data(word_details):
+        result = []
+
+        for _word, details in word_details.items():
+
+            total = details[0]
+            sentences = '\n'.join(list(details[1]))
+            result.append((_word, total, sentences))
+
+        return result
+
     @staticmethod
     def _get_final_dataframe(process_file_path, occurency_limit):
 
@@ -116,68 +178,6 @@ class FindCommonWords:
         merged_df = merged_df[merged_df['total'] >= occurency_limit]
         merged_df.sort_values(by=['total'], ascending=False, inplace=True)
         return merged_df
-
-    def _get_words_details(self, file_object):
-
-        # create a defaultdict with number of occurrences
-        # and set of sentences (if a word appears more than once in one sentence)
-        words_details = defaultdict(lambda: [0, set()])
-
-        for line in file_object:
-
-            line = line.decode('utf-8')
-            sentences = (sentence for sentence in sent_tokenize(line))
-            for sentence in sentences:
-                # Lower all words first to count the words easier
-                sentence = sentence.lower()
-
-                words = self._get_words(sentence)
-                for word in words:
-                    # total words in one sentence
-                    total = len(re.findall(r'\b{0}\b'.format(word), sentence))
-
-                    words_details[word][0] += total
-
-                    # We use set() so we won't have duplicates
-                    # if more than one word exist in the sentence
-                    words_details[word][1].add(sentence)
-
-        return words_details
-
-    @staticmethod
-    def _prepare_doc_dataframe_data(word_details):
-        result = []
-
-        for _word, details in word_details.items():
-
-            total = details[0]
-            sentences = '\n'.join(list(details[1]))
-            result.append((_word, total, sentences))
-
-        return result
-
-    def _get_words(self, sentence):
-        """Get and format words from a sentence
-        @:param sentence: str: a sentence from a line
-        @return generator: list of words (with/without stop words)"""
-
-        # Remove apostrophes in contractions words with
-        # Syntactically they are one word so I will treat them like that
-        # The other option would be changing explicitly contractions words to two seperate words
-        sentence = re.sub("""(?<=\w)['’`"](?=\w)""", '', sentence)
-
-        # Instead create a new wheel, we can use a nltk library for tokenization
-        toktok = ToktokTokenizer()
-        words = toktok.tokenize(sentence)
-
-        # Here we can include or exclude stop words, they are probably the most common words
-        if not self.include_stopwords:
-            # This throws ResourceWarning. It opened the stream but devs forgot to include close()
-            stop_words = stopwords.words('english')
-            words = set(words).difference(stop_words)
-
-        # Ignore punctuations and return generator with words
-        return (word for word in words if not re.match('[^\w]', word))
 
 
 def setup_directories(processed_path, nlkt_data_path):
