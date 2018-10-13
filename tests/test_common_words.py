@@ -1,9 +1,11 @@
 import os
 import shutil
+from io import StringIO
+
+import pandas as pd
 
 from unittest import TestCase, main
 from unittest.mock import patch, PropertyMock
-
 from tempfile import mkdtemp
 
 from common_words import (
@@ -13,6 +15,11 @@ from common_words import (
     setup_directories,
 )
 
+from .sample import (
+    DOC_1,
+    DOC_2
+)
+
 
 class BaseTest(TestCase):
 
@@ -20,12 +27,12 @@ class BaseTest(TestCase):
         super(BaseTest, self).setUp()
         self.test_instance = FindCommonWords('', '', 5, False)
 
-        self.processed_file_path = mkdtemp('test_processed_files')
-        setup_directories(self.processed_file_path, NLKT_DATA_PATH)
+        self.test_processed_path = mkdtemp('test_processed_files')
+        setup_directories(self.test_processed_path, NLKT_DATA_PATH)
 
     def tearDown(self):
         # Delelte temp test directory
-        shutil.rmtree(self.processed_file_path)
+        shutil.rmtree(self.test_processed_path)
 
 
 class TestParser(BaseTest):
@@ -38,15 +45,34 @@ class TestParser(BaseTest):
 
 class TestWords(BaseTest):
 
+    def test_final_dataframe(self):
+
+        docs_content = {'doc1': DOC_1, 'doc2': DOC_2}
+
+        for filename, file_content in docs_content.items():
+            with open(f'{self.test_processed_path}/{filename}.csv', 'wb') as fp:
+                fp.write(file_content.encode('utf-8'))
+
+        df = self.test_instance._get_final_dataframe(self.test_processed_path)
+
+        self.assertEqual(df.loc['cat']['docs'], 'doc2.txt,doc1.txt')
+        self.assertEqual(df.loc['cat']['total'], float(4))
+        self.assertEqual(df.loc['cat']['sentences'],
+                         'I saw a black cat.\nThe cat doesnt like me.\nI saw a cat\nThe cat likes the mouse.')
+
+        self.assertEqual(df.loc['dog']['docs'], 'doc2.txt,doc1.txt')
+        self.assertEqual(df.loc['dog']['total'], float(6))
+        self.assertEqual(df.loc['dog']['sentences'], 'dog dog dog dog\ndog dog')
+
     def test_contraction_words(self):
-        sentence = "I'll some L`Apostrophe from 2004's, " \
+        sentence = "I'll eat some L`Apostrophe from 2004's, " \
                    "I don't know if it's even a food, I'm gonna find out."
         words = self.test_instance._get_words(sentence)
         words = list(words)
         words.sort()
-        self.assertEqual(
-            words,
-        ['2004s', 'I', 'Ill', 'Im', 'LApostrophe', 'dont', 'even', 'find', 'food', 'gonna', 'know']
+        self.assertEqual( words,
+            ['2004s', 'I', 'Ill', 'Im', 'LApostrophe', 'dont', 'eat', 'even',
+             'find', 'food', 'gonna', 'know']
         )
 
     def test_multi_exclamation_marks(self):

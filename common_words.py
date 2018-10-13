@@ -5,7 +5,9 @@ import re
 import shutil
 from argparse import ArgumentParser
 
+import numpy as np
 import pandas as pd
+
 from collections import defaultdict
 from nltk import (
     download as nltk_download,
@@ -41,10 +43,10 @@ class FindCommonWords:
         self.processed_files_path = processed_files_path
         self.include_stopwords = include_stopwords
 
-    def find_common_words(self, path):
+    def find_common_words(self, source_path):
 
         # Use os.scandir() so we don't have to list all files at once
-        for dir_entry in os.scandir(path):
+        for dir_entry in os.scandir(source_path):
 
             with open(dir_entry.path, 'rb') as file_object:
                 filename = dir_entry.name
@@ -58,34 +60,41 @@ class FindCommonWords:
                 csv_name = f'{csv_name}.{COMPRESSION}'
                 dataframe.to_csv(os.path.join(self.processed_files_path, csv_name), index=False)
 
-        result_dataframe = self._get_common_words()
+        result_dataframe = self._get_final_dataframe(self.processed_files_path)
         result_dataframe.reset_index(INDEX_COLUMN, inplace=True)
         result_dataframe.to_csv(RESULT_CSV_FILENAME, index=False)
 
-    def _get_common_words(self):
+    @staticmethod
+    def _get_final_dataframe(process_file_path):
 
-        result_columns = ['word', 'docs', 'sentences', 'total']
+        result_columns = ['word', 'docs', 'total', 'sentences']
         merged_df = pd.DataFrame(columns=result_columns).set_index(INDEX_COLUMN)
 
-        for dir_entry in os.scandir(self.processed_files_path):
-            doc_dataframe = pd.read_csv(dir_entry.path).set_index(INDEX_COLUMN)
+        def concat(*args, delimeter=''):
+            strs = [str(arg) for arg in args if not pd.isnull(arg)]
+            return f'{delimeter}'.join(strs) if strs else np.nan
+
+        np_concat = np.vectorize(concat)
+
+        for dir_entry in os.scandir(process_file_path):
+            doc_dataframe = pd.read_csv(dir_entry.path, skipinitialspace=True).set_index(INDEX_COLUMN)
+            doc_dataframe['docs'] = os.path.splitext(dir_entry.name)[0] + '.txt'
 
             merged_df = pd.merge(merged_df, doc_dataframe, on=[INDEX_COLUMN],
                                  how='outer', suffixes=('_result', '_doc'))
 
-            # Merge non empty values from doc's sentence column and result column
-            # Split new sentences with a new line for readability
-            merged_df.loc[(merged_df['sentences_result'].notnull())
-                      & (merged_df['sentences_doc'].notnull()), 'sentences_result'] += '\n'
+            # Concatenate columns
+            merged_df['docs'] = np_concat(merged_df['docs_result'], merged_df['docs_doc'], delimeter=',')
 
-            # Merge doc's sentence to result column if result column is
-            merged_df['sentences'] = merged_df['sentences_result'].fillna(merged_df['sentences_doc'])
+            merged_df['sentences'] = np_concat(merged_df['sentences_result'], merged_df['sentences_doc'], delimeter='\n')
+
             merged_df['total'] = merged_df.loc[:, ['total_result', 'total_doc']].sum(axis=1)
-            merged_df['docs'] = dir_entry.name
 
             unwanted_cols = set(list(merged_df)).difference(result_columns)
-            merged_df.drop(list(unwanted_cols), axis=1, inplace=True)
+            if unwanted_cols:
+                merged_df.drop(list(unwanted_cols), axis=1, inplace=True)
 
+        merged_df.fillna('')
         return merged_df
 
     def _create_file_dataframe(self, file_object):
