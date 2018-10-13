@@ -1,9 +1,11 @@
 About this Repo
 ======
 
-A test for Eigen Technologies.
+Solution for test from Eigen Technologies.
 
-Contains a script for words counting in text files and unit tests.
+Contains a script for words counting in text files.
+
+Used python 3.6.
 
 How to run
 =====
