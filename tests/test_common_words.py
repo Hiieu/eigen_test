@@ -9,10 +9,11 @@ from unittest.mock import patch, PropertyMock
 from tempfile import mkdtemp
 
 from common_words import (
-    NLKT_DATA_PATH,
     create_parser,
     FindCommonWords,
-    setup_directories,
+    NLKT_DATA_PATH,
+    OCCURRENCES_LIMIT,
+    setup_directories
 )
 
 from .sample import (
@@ -38,9 +39,10 @@ class BaseTest(TestCase):
 class TestParser(BaseTest):
 
     def test(self):
+        return
         create_parser()
 
-        self.assertEqual(parsed.something, 'test')
+        # self.assertEqual(parsed.something, 'test')
 
 
 class TestWords(BaseTest):
@@ -53,7 +55,7 @@ class TestWords(BaseTest):
             with open(f'{self.test_processed_path}/{filename}.csv', 'wb') as fp:
                 fp.write(file_content.encode('utf-8'))
 
-        df = self.test_instance._get_final_dataframe(self.test_processed_path)
+        df = self.test_instance._get_final_dataframe(self.test_processed_path, OCCURRENCES_LIMIT)
 
         self.assertEqual(df.loc['cat']['docs'], 'doc2.txt,doc1.txt')
         self.assertEqual(df.loc['cat']['total'], float(4))
@@ -63,6 +65,14 @@ class TestWords(BaseTest):
         self.assertEqual(df.loc['dog']['docs'], 'doc2.txt,doc1.txt')
         self.assertEqual(df.loc['dog']['total'], float(6))
         self.assertEqual(df.loc['dog']['sentences'], 'dog dog dog dog\ndog dog')
+
+        self.assertEqual(df.loc['bird']['docs'], 'doc1.txt')
+        self.assertEqual(df.loc['bird']['total'], float(4))
+        self.assertEqual(df.loc['bird']['sentences'], 'bird bird bird bird')
+
+        self.assertEqual(df.loc['turtle']['docs'], 'doc2.txt')
+        self.assertEqual(df.loc['turtle']['total'], float(5))
+        self.assertEqual(df.loc['turtle']['sentences'], 'turtle turtle turtle turtle turtle')
 
     def test_contraction_words(self):
         sentence = "I'll eat some L`Apostrophe from 2004's, " \

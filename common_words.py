@@ -56,16 +56,18 @@ class FindCommonWords:
                 if dataframe.empty:
                     continue
 
-                csv_name = os.path.splitext(filename)[0]
-                csv_name = f'{csv_name}.{COMPRESSION}'
+                filename = os.path.splitext(filename)
+                csv_name = f'{filename}.{COMPRESSION}'
                 dataframe.to_csv(os.path.join(self.processed_files_path, csv_name), index=False)
 
-        result_dataframe = self._get_final_dataframe(self.processed_files_path)
+        result_dataframe = self._get_final_dataframe(self.processed_files_path, self.occurrences_limit)
+
+        # Remove the index 'word' and treat it as a regular column
         result_dataframe.reset_index(INDEX_COLUMN, inplace=True)
         result_dataframe.to_csv(RESULT_CSV_FILENAME, index=False)
 
     @staticmethod
-    def _get_final_dataframe(process_file_path):
+    def _get_final_dataframe(process_file_path, occurency_limit):
 
         result_columns = ['word', 'docs', 'total', 'sentences']
         merged_df = pd.DataFrame(columns=result_columns).set_index(INDEX_COLUMN)
@@ -77,24 +79,37 @@ class FindCommonWords:
         np_concat = np.vectorize(concat)
 
         for dir_entry in os.scandir(process_file_path):
-            doc_dataframe = pd.read_csv(dir_entry.path, skipinitialspace=True).set_index(INDEX_COLUMN)
-            doc_dataframe['docs'] = os.path.splitext(dir_entry.name)[0] + '.txt'
+            doc_dataframe = pd.read_csv(dir_entry.path, skipinitialspace=True)
+
+            # Set 'word' column as index
+            doc_dataframe.set_index(INDEX_COLUMN, inplace=True)
+
+            # Assuming the file extensions are in .txt
+            doc_dataframe['docs'] = os.path.splitext(dir_entry.name)[0]
 
             merged_df = pd.merge(merged_df, doc_dataframe, on=[INDEX_COLUMN],
                                  how='outer', suffixes=('_result', '_doc'))
 
             # Concatenate columns
+
+            # Split docs values with comma
             merged_df['docs'] = np_concat(merged_df['docs_result'], merged_df['docs_doc'], delimeter=',')
 
-            merged_df['sentences'] = np_concat(merged_df['sentences_result'], merged_df['sentences_doc'], delimeter='\n')
+            # Split new sentences with new line
+            merged_df['sentences'] = np_concat(merged_df['sentences_result'],
+                                               merged_df['sentences_doc'], delimeter='\n')
 
+            # Count all occurences across the files
             merged_df['total'] = merged_df.loc[:, ['total_result', 'total_doc']].sum(axis=1)
 
+            # Drop unused columns for the next iteration
             unwanted_cols = set(list(merged_df)).difference(result_columns)
             if unwanted_cols:
                 merged_df.drop(list(unwanted_cols), axis=1, inplace=True)
 
         merged_df.fillna('')
+        merged_df = merged_df[merged_df['total'] >= occurency_limit]
+        merged_df.sort_values(by=['total'], ascending=False, inplace=True)
         return merged_df
 
     def _create_file_dataframe(self, file_object):
@@ -102,8 +117,6 @@ class FindCommonWords:
         words_details = self._get_words_details(file_object)
 
         dataframe = pd.DataFrame.from_records(words_details, columns=['word', 'total', 'sentences'])
-
-        dataframe.sort_values(by=['total'], ascending=False, inplace=True)
         return dataframe
 
     def _get_words_details(self, file_object):
@@ -115,21 +128,25 @@ class FindCommonWords:
         for line in file_object:
 
             line = line.decode('utf-8')
-            sentences = sent_tokenize(line)
-
+            sentences = (sentence for sentence in sent_tokenize(line))
             for sentence in sentences:
-
+                # Lower all words first to count the words easier
                 sentence = sentence.lower()
 
                 words = self._get_words(sentence)
                 for word in words:
                     # total words in one sentence
                     total = len(re.findall(r'\b{0}\b'.format(word), sentence))
+
                     words_details[word][0] += total
+
+                    # We use set so we won't have duplicates
+                    # if more than one word exist in the sentence
                     words_details[word][1].add(sentence)
 
         result = []
 
+        # Preparing data for dataframe,
         for _word, details in words_details.items():
 
             total = details[0]
@@ -147,9 +164,12 @@ class FindCommonWords:
         # Syntactically they are one word so I will treat them like that
         # The other option would be changing explicitly contractions words to two seperate words
         sentence = re.sub("""(?<=\w)['’`"](?=\w)""", '', sentence)
+
+        # Instead create a new wheel, we can use a nltk library for tokenization
         toktok = ToktokTokenizer()
         words = toktok.tokenize(sentence)
 
+        # Here we can include or exclude stop words, they are probably the most common words
         if not self.include_stopwords:
             # This throws ResourceWarning. It opened the stream but devs forgot to include close()
             stop_words = stopwords.words('english')
@@ -162,7 +182,7 @@ class FindCommonWords:
 def setup_directories(processed_path, nlkt_data_path):
     """Just in case delete/create a directory for processed files
     It's okay to store files data in memory if they are small.
-    However, I would save them them somewhere if the data is large"""
+    However, I would save/upload them them somewhere if the data is large"""
 
     if os.path.exists(processed_path):
         shutil.rmtree(processed_path)
