@@ -10,10 +10,10 @@ from collections import defaultdict
 from nltk import (
     download as nltk_download,
     sent_tokenize,
-    word_tokenize
 )
 from nltk.data import path as nltk_path
 from nltk.corpus import stopwords
+from nltk.tokenize.toktok import ToktokTokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +138,8 @@ class FindCommonWords:
         # Syntactically they are one word so I will treat them like that
         # The other option would be changing explicitly contractions words to two seperate words
         sentence = re.sub("""(?<=\w)['’`"](?=\w)""", '', sentence)
-        words = word_tokenize(sentence, preserve_line=True)
+        toktok = ToktokTokenizer()
+        words = toktok.tokenize(sentence)
 
         if not self.include_stopwords:
             # This throws ResourceWarning. It opened the stream but devs forgot to include close()

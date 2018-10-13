@@ -133,4 +133,5 @@ venv.bak/
 # User "ignores"
 
 nltk_data
+processed_files
 .DS_Store

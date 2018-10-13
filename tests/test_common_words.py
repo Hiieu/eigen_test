@@ -7,8 +7,6 @@ from unittest.mock import patch, PropertyMock
 from tempfile import mkdtemp
 
 from common_words import (
-    FILES_PATH,
-    PROCESSED_FILES_PATH,
     NLKT_DATA_PATH,
     create_parser,
     FindCommonWords,
@@ -30,7 +28,7 @@ class BaseTest(TestCase):
         shutil.rmtree(self.processed_file_path)
 
 
-class TestParser():
+class TestParser(BaseTest):
 
     def test(self):
         create_parser()
@@ -40,14 +38,15 @@ class TestParser():
 
 class TestWords(BaseTest):
 
-    def test_apostrophes(self):
-        sentence = "I'll eat some L`Apostrophe from 2004's, I don't know if it's even a food."
+    def test_contraction_words(self):
+        sentence = "I'll some L`Apostrophe from 2004's, " \
+                   "I don't know if it's even a food, I'm gonna find out."
         words = self.test_instance._get_words(sentence)
         words = list(words)
         words.sort()
         self.assertEqual(
             words,
-            ['2004s', 'I', 'Ill', 'LApostrophe', 'dont', 'eat', 'even', 'food', 'know']
+        ['2004s', 'I', 'Ill', 'Im', 'LApostrophe', 'dont', 'even', 'find', 'food', 'gonna', 'know']
         )
 
     def test_multi_exclamation_marks(self):
