@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(__file__)
 
 FILES_PATH = os.path.join(BASE_DIR, 'test docs')
-OUTPUT_PATH = os.path.join(BASE_DIR, 'result')
 PROCESSED_FILES_PATH = os.path.join(BASE_DIR, 'processed_files')
 NLKT_DATA_PATH = os.path.join(BASE_DIR, 'nltk_data')
 
@@ -35,10 +34,10 @@ INDEX_COLUMN = 'word'
 
 class FindCommonWords:
 
-    def __init__(self, result_path, processed_files_path, occurrences_limit,
+    def __init__(self, output_path, processed_files_path, occurrences_limit,
                  include_stopwords):
 
-        self.result_path = result_path
+        self.output_path = output_path
         self.occurrences_limit = occurrences_limit
         self.processed_files_path = processed_files_path
         self.include_stopwords = include_stopwords
@@ -65,7 +64,9 @@ class FindCommonWords:
 
         # Remove the index 'word' and treat it as a regular column
         result_dataframe.reset_index(INDEX_COLUMN, inplace=True)
-        result_dataframe.to_csv(RESULT_CSV_FILENAME, index=False)
+        
+        output_path = f'{self.output_path}/{RESULT_CSV_FILENAME}'
+        result_dataframe.to_csv(output_path, index=False)
 
     @staticmethod
     def _get_final_dataframe(process_file_path, occurency_limit):
@@ -141,7 +142,7 @@ class FindCommonWords:
 
                     words_details[word][0] += total
 
-                    # We use set so we won't have duplicates
+                    # We use set() so we won't have duplicates
                     # if more than one word exist in the sentence
                     words_details[word][1].add(sentence)
 
@@ -199,11 +200,11 @@ def setup_directories(processed_path, nlkt_data_path):
 
 def handle_parser(args):
 
-    processed_file_path = args.processed_file_path
-    setup_directories(processed_file_path, args.nlkt_data_path)
+    processed_files_path = args.processed_files_path
+    setup_directories(processed_files_path, args.nlkt_data_path)
 
-    FindCommonWords(args.output,
-                    processed_file_path,
+    FindCommonWords(args.output_path,
+                    processed_files_path,
                     args.occurrences_limit,
                     args.include_stopwords
                     ).find_common_words(args.docs_path)
@@ -212,13 +213,27 @@ def handle_parser(args):
 def create_parser():
     parser = ArgumentParser(description='Get common words from text documents',
                             epilog='python common_words.py -docs_path {full_path}/test docs')
+
     parser.add_argument('-docs_path', help='Path for documents to process', default=FILES_PATH)
-    parser.add_argument('-processed_file_path', help='Path for each processed document. '
-                                                'The script uses it as a transit directory .Default: result/', default=PROCESSED_FILES_PATH)
-    parser.add_argument('-output', help='File output directory. Default: result/', default=OUTPUT_PATH)
-    parser.add_argument('-occurrences_limit', help=f'Occurrences limit. Default: {OCCURRENCES_LIMIT}', default=OCCURRENCES_LIMIT)
-    parser.add_argument('-nlkt_data_path', help=f'Nlkt path for nlkt module. Default: {NLKT_DATA_PATH}', default=NLKT_DATA_PATH)
-    parser.add_argument('-include_stopwords', help=f'Include stop words?. Default: False', required=False)
+
+    parser.add_argument('-processed_files_path',
+                        help='Path for each processed document. '
+                             '\nThe script uses it as a transit directory .Default: result/',
+                        default=PROCESSED_FILES_PATH)
+
+    parser.add_argument('-output_path', help='File output directory. Default: .', default=BASE_DIR)
+
+    parser.add_argument('-occurrences_limit',
+                        help=f'Occurrences limit. Default: {OCCURRENCES_LIMIT}',
+                        default=OCCURRENCES_LIMIT)
+
+    parser.add_argument('-nlkt_data_path',
+                        help=f'Nlkt path for nlkt module. Default: {NLKT_DATA_PATH}',
+                        default=NLKT_DATA_PATH)
+    parser.add_argument('-include_stopwords',
+                        help=f'Include stop words?. Default: False',
+                        required=False)
+
     handle_parser(parser.parse_args())
 
 
