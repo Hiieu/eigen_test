@@ -12,7 +12,6 @@ from common_words import (
     create_parser,
     FindCommonWords,
     NLKT_DATA_PATH,
-    OCCURRENCES_LIMIT,
     setup_directories
 )
 
@@ -39,7 +38,6 @@ class BaseTest(TestCase):
 class TestParser(BaseTest):
 
     def test(self):
-        return
         create_parser()
 
         # self.assertEqual(parsed.something, 'test')
@@ -49,13 +47,13 @@ class TestWords(BaseTest):
 
     def test_final_dataframe(self):
 
-        docs_content = {'doc1': DOC_1, 'doc2': DOC_2}
+        docs_content = {'doc1.txt': DOC_1, 'doc2.txt': DOC_2}
 
         for filename, file_content in docs_content.items():
             with open(f'{self.test_processed_path}/{filename}.csv', 'wb') as fp:
                 fp.write(file_content.encode('utf-8'))
 
-        df = self.test_instance._get_final_dataframe(self.test_processed_path, OCCURRENCES_LIMIT)
+        df = self.test_instance._get_final_dataframe(self.test_processed_path, 0)
 
         self.assertEqual(df.loc['cat']['docs'], 'doc2.txt,doc1.txt')
         self.assertEqual(df.loc['cat']['total'], float(4))

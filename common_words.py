@@ -56,7 +56,8 @@ class FindCommonWords:
                 if dataframe.empty:
                     continue
 
-                filename = os.path.splitext(filename)
+                # Name the following files as i.e. doc1.txt.gzip
+                filename = os.path.split(filename)[-1]
                 csv_name = f'{filename}.{COMPRESSION}'
                 dataframe.to_csv(os.path.join(self.processed_files_path, csv_name), index=False)
 
