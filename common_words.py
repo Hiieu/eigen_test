@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+import logging
 import os
 import re
 import shutil
@@ -13,6 +15,9 @@ from nltk import (
 from nltk.data import path as nltk_path
 from nltk.corpus import stopwords
 
+logger = logging.getLogger(__name__)
+
+
 BASE_DIR = os.path.dirname(__file__)
 
 FILES_PATH = os.path.join(BASE_DIR, 'test docs')
@@ -20,8 +25,10 @@ OUTPUT_PATH = os.path.join(BASE_DIR, 'result')
 PROCESSED_FILES_PATH = os.path.join(BASE_DIR, 'processed_files')
 NLKT_DATA_PATH = os.path.join(BASE_DIR, 'nltk_data')
 
-OCCURRENCES_LIMIT = 50
+OCCURRENCES_LIMIT = 20
 COMPRESSION = 'gzip'
+RESULT_CSV_FILENAME = 'result.csv'
+INDEX_COLUMN = 'word'
 
 
 class FindCommonWords:
@@ -42,47 +49,53 @@ class FindCommonWords:
             with open(dir_entry.path, 'rb') as file_object:
                 filename = dir_entry.name
 
-                dataframe = self._get_dataframe(file_object)
+                dataframe = self._create_file_dataframe(file_object)
+
+                if dataframe.empty:
+                    continue
 
                 csv_name = os.path.splitext(filename)[0]
                 csv_name = f'{csv_name}.{COMPRESSION}'
-                dataframe.to_csv(os.path.join(self.processed_files_path, csv_name),
-                                 compression=COMPRESSION, index=False)
+                dataframe.to_csv(os.path.join(self.processed_files_path, csv_name), index=False)
 
-        self._get_common_words()
+        result_dataframe = self._get_common_words()
+        result_dataframe.reset_index(INDEX_COLUMN, inplace=True)
+        result_dataframe.to_csv(RESULT_CSV_FILENAME, index=False)
 
     def _get_common_words(self):
 
-        result_dataframe = pd.DataFrame(columns=['word', 'docs', 'sentences', 'total'])
+        result_columns = ['word', 'docs', 'sentences', 'total']
+        merged_df = pd.DataFrame(columns=result_columns).set_index(INDEX_COLUMN)
 
         for dir_entry in os.scandir(self.processed_files_path):
-            doc_dataframe = pd.read_csv(dir_entry.path, compression=COMPRESSION)
+            doc_dataframe = pd.read_csv(dir_entry.path).set_index(INDEX_COLUMN)
 
-            merged_df = pd.merge(result_dataframe, doc_dataframe, on=['word'],
+            merged_df = pd.merge(merged_df, doc_dataframe, on=[INDEX_COLUMN],
                                  how='outer', suffixes=('_result', '_doc'))
-            merged_df['docs'] = dir_entry.name
 
             # Merge non empty values from doc's sentence column and result column
             # Split new sentences with a new line for readability
             merged_df.loc[(merged_df['sentences_result'].notnull())
-                          & (merged_df['sentences_doc'].notnull()), 'sentences_result'] += '\n'
+                      & (merged_df['sentences_doc'].notnull()), 'sentences_result'] += '\n'
+
 
             # Merge doc's sentence to result column if result column is
-            merged_df['sentences_result'] = merged_df['sentences_result'].fillna(merged_df['sentences_doc'])
+            merged_df['sentences'] = merged_df['sentences_result'].fillna(merged_df['sentences_doc'])
+            merged_df['total'] = merged_df.loc[:, ['total_result', 'total_doc']].sum(axis=1)
+            merged_df['docs'] = dir_entry.name
 
-    def _get_dataframe(self, file_object):
+            unwanted_cols = set(list(merged_df)).difference(result_columns)
+            merged_df.drop(list(unwanted_cols), axis=1, inplace=True)
 
-        dataframe = pd.DataFrame(columns=['word', 'total', 'sentences'])
+        return merged_df
+
+    def _create_file_dataframe(self, file_object):
 
         words_details = self._get_words_details(file_object)
 
-        for word, details in words_details:
-            total = details[0]
-            sentences = details[1]
-            dataframe.loc[len(dataframe.index) + 1] = word, total, '\n'.join(sentences)
+        dataframe = pd.DataFrame.from_records(words_details, columns=['word', 'total', 'sentences'])
 
-        dataframe = dataframe.loc[dataframe['total'] >= self.occurrences_limit]
-        dataframe = dataframe.sort_values(by=['total'], ascending=False)
+        dataframe.sort_values(by=['total'], ascending=False, inplace=True)
         return dataframe
 
     def _get_words_details(self, file_object):
@@ -90,34 +103,59 @@ class FindCommonWords:
         # create a defaultdict with number of occurrences
         # and set of sentences (if a word appears more than once in one sentence)
         words_details = defaultdict(lambda: [0, set()])
+
         for line in file_object:
 
             line = line.decode('utf-8')
             sentences = sent_tokenize(line)
 
             for sentence in sentences:
+
+                sentence = sentence.lower()
+
                 words = self._get_words(sentence)
                 for word in words:
-                    words_details[word][0] += 1
+                    # total words in one sentence
+                    total = len(re.findall(r'\b{0}\b'.format(word), sentence))
+                    words_details[word][0] += total
                     words_details[word][1].add(sentence)
 
-        return words_details.items()
+        result = []
+
+        for _word, details in words_details.items():
+
+            total = details[0]
+            sentences = '\n'.join(list(details[1]))
+            result.append((_word, total, sentences))
+
+        return result
 
     def _get_words(self, sentence):
         """Get and format words from a sentence
         @:param sentence: str: a sentence from a line
-        @return list(str): list of words (with/without stop words)"""
+        @return generator: list of words (with/without stop words)"""
 
-        sentence = sentence.lower()
-
-        # Remove punctuations
-        sentence = re.sub('[^\w\s]', '', sentence)
+        # Remove number - they are not words (but leave form of numbers i.e. 1st)
+        # Ignore punctuations and remove apostrophes from contractions words
+        sentence = re.sub("(((?<=\s|,)|(?<=^))\d+(?=\s|\W|$))|'|’", '', sentence)
         words = word_tokenize(sentence, preserve_line=True)
 
-        if self.include_stopwords:
-            return words
+        if not self.include_stopwords:
+            # This throws ResourceWarning. It opened the stream but devs forgot to include close()
+            stop_words = stopwords.words('english')
+            words = set(words).difference(stop_words)
 
-        return set(words).difference(stopwords)
+
+        for word in words:
+            if not len(word) > 2:
+                continue
+
+            # Remove other non-alphabetical characters i.e. ... or !!!
+            _word = re.sub('[^\w]', '', word)
+            if _word == '':
+                continue
+
+            yield _word
 
 
 def _setup_directories(processed_path, nlkt_data_path):
@@ -132,7 +170,7 @@ def _setup_directories(processed_path, nlkt_data_path):
 
     if not os.path.exists(nlkt_data_path):
         os.makedirs(nlkt_data_path)
-        nltk_download('punkt', download_dir=nlkt_data_path)
+        nltk_download(['punkt', 'stopwords'], download_dir=nlkt_data_path)
 
     nltk_path.append(nlkt_data_path)
 
