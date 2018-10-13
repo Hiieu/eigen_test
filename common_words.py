@@ -50,7 +50,10 @@ class FindCommonWords:
             with open(dir_entry.path, 'rb') as file_object:
                 filename = dir_entry.name
 
-                dataframe = self._create_file_dataframe(file_object)
+                words_details = self._get_words_details(file_object)
+                doc_dataframe_data = self._prepare_doc_dataframe_data(words_details)
+                dataframe = pd.DataFrame.from_records(doc_dataframe_data,
+                                                      columns=['word', 'total', 'sentences'])
 
                 if dataframe.empty:
                     continue
@@ -114,13 +117,6 @@ class FindCommonWords:
         merged_df.sort_values(by=['total'], ascending=False, inplace=True)
         return merged_df
 
-    def _create_file_dataframe(self, file_object):
-
-        words_details = self._get_words_details(file_object)
-
-        dataframe = pd.DataFrame.from_records(words_details, columns=['word', 'total', 'sentences'])
-        return dataframe
-
     def _get_words_details(self, file_object):
 
         # create a defaultdict with number of occurrences
@@ -146,10 +142,13 @@ class FindCommonWords:
                     # if more than one word exist in the sentence
                     words_details[word][1].add(sentence)
 
+        return words_details
+
+    @staticmethod
+    def _prepare_doc_dataframe_data(word_details):
         result = []
 
-        # Preparing data for dataframe,
-        for _word, details in words_details.items():
+        for _word, details in word_details.items():
 
             total = details[0]
             sentences = '\n'.join(list(details[1]))
@@ -214,24 +213,25 @@ def create_parser():
     parser = ArgumentParser(description='Get common words from text documents',
                             epilog='python common_words.py -docs_path {full_path}/test docs')
 
-    parser.add_argument('-docs_path', help='Path for documents to process', default=FILES_PATH)
+    parser.add_argument('-docs_path', help='Process files in the specified directory', default=FILES_PATH)
 
     parser.add_argument('-processed_files_path',
-                        help='Path for each processed document. '
-                             '\nThe script uses it as a transit directory .Default: result/',
+                        help=f'Transit folder for processed files .Default: {PROCESSED_FILES_PATH}',
                         default=PROCESSED_FILES_PATH)
 
-    parser.add_argument('-output_path', help='File output directory. Default: .', default=BASE_DIR)
+    parser.add_argument('-output_path',
+                        help=f'Destination directory for the result file. Default: .{BASE_DIR}',
+                        default=BASE_DIR)
 
     parser.add_argument('-occurrences_limit',
-                        help=f'Occurrences limit. Default: {OCCURRENCES_LIMIT}',
+                        help=f'Include words equal or greater than the limit. Default: {OCCURRENCES_LIMIT}',
                         default=OCCURRENCES_LIMIT)
 
     parser.add_argument('-nlkt_data_path',
-                        help=f'Nlkt path for nlkt module. Default: {NLKT_DATA_PATH}',
+                        help=f'Path for nltk libraries. Default: {NLKT_DATA_PATH}',
                         default=NLKT_DATA_PATH)
     parser.add_argument('-include_stopwords',
-                        help=f'Include stop words?. Default: False',
+                        help='(Default: False) True if include stop words',
                         required=False)
 
     handle_parser(parser.parse_args())
