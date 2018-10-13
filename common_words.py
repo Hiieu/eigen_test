@@ -78,7 +78,6 @@ class FindCommonWords:
             merged_df.loc[(merged_df['sentences_result'].notnull())
                       & (merged_df['sentences_doc'].notnull()), 'sentences_result'] += '\n'
 
-
             # Merge doc's sentence to result column if result column is
             merged_df['sentences'] = merged_df['sentences_result'].fillna(merged_df['sentences_doc'])
             merged_df['total'] = merged_df.loc[:, ['total_result', 'total_doc']].sum(axis=1)
@@ -135,9 +134,10 @@ class FindCommonWords:
         @:param sentence: str: a sentence from a line
         @return generator: list of words (with/without stop words)"""
 
-        # Remove number - they are not words (but leave form of numbers i.e. 1st)
-        # Ignore punctuations and remove apostrophes from contractions words
-        sentence = re.sub("(((?<=\s|,)|(?<=^))\d+(?=\s|\W|$))|'|’", '', sentence)
+        # Remove apostrophes in contractions words with
+        # Syntactically they are one word so I will treat them like that
+        # The other option would be changing explicitly contractions words to two seperate words
+        sentence = re.sub("""(?<=\w)['’`"](?=\w)""", '', sentence)
         words = word_tokenize(sentence, preserve_line=True)
 
         if not self.include_stopwords:
@@ -145,20 +145,11 @@ class FindCommonWords:
             stop_words = stopwords.words('english')
             words = set(words).difference(stop_words)
 
-
-        for word in words:
-            if not len(word) > 2:
-                continue
-
-            # Remove other non-alphabetical characters i.e. ... or !!!
-            _word = re.sub('[^\w]', '', word)
-            if _word == '':
-                continue
-
-            yield _word
+        # Ignore punctuations and return generator with words
+        return (word for word in words if not re.match('[^\w]', word))
 
 
-def _setup_directories(processed_path, nlkt_data_path):
+def setup_directories(processed_path, nlkt_data_path):
     """Just in case delete/create a directory for processed files
     It's okay to store files data in memory if they are small.
     However, I would save them them somewhere if the data is large"""
@@ -177,9 +168,8 @@ def _setup_directories(processed_path, nlkt_data_path):
 
 def handle_parser(args):
 
-
     processed_file_path = args.processed_file_path
-    _setup_directories(processed_file_path, args.nlkt_data_path)
+    setup_directories(processed_file_path, args.nlkt_data_path)
 
     FindCommonWords(args.output,
                     processed_file_path,
