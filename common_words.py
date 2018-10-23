@@ -140,7 +140,7 @@ class FindCommonWords:
         merged_df = pd.DataFrame(columns=result_columns).set_index(INDEX_COLUMN)
 
         def concat(*args, delimeter=''):
-            strs = [str(arg) for arg in args if not pd.isnull(arg)]
+            strs = [str(arg) for arg in args if pd.notnull(arg)]
             return f'{delimeter}'.join(strs) if strs else np.nan
 
         np_concat = np.vectorize(concat)
@@ -160,9 +160,10 @@ class FindCommonWords:
             # Concatenate columns
 
             # Split docs values with comma
-            merged_df['docs'] = np_concat(merged_df['docs_result'], merged_df['docs_doc'], delimeter=',')
+            merged_df['docs'] = np_concat(merged_df['docs_result'].values, merged_df['docs_doc'].values, delimeter=',')
 
             # Split new sentences with new line
+            # Vectorizing numpy arrays is more efficient
             merged_df['sentences'] = np_concat(merged_df['sentences_result'],
                                                merged_df['sentences_doc'], delimeter='\n')
 
