@@ -123,13 +123,21 @@ class FindCommonWords:
 
     @staticmethod
     def _prepare_doc_dataframe_data(word_details):
-        result = []
 
-        for _word, details in word_details.items():
+        def join_sentences(sentences):
+            return '\n'.join(list(sentences))
 
-            total = details[0]
-            sentences = '\n'.join(list(details[1]))
-            result.append((_word, total, sentences))
+        np_join_sentences = np.vectorize(join_sentences)
+
+        total_and_sentences = np.array(list(word_details.values()))
+        total = list(total_and_sentences[:, 0])
+        sentences = list(np_join_sentences(total_and_sentences[:, 1]))
+
+        result = {
+            'words': list(word_details.keys()),
+            'sentences': sentences,
+            'total': total
+        }
 
         return result
 
